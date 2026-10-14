@@ -2,7 +2,7 @@
 
 const LESSON_SIZE = 10;
 const NEW_PER_LESSON = 2;
-const LEARNED_AT = 3; // correct answers in a row before a sentence counts as learned
+const LEARNED_AT = 10; // correct answers in a row before a sentence is learned and stops coming back
 const SAVE_DELAY_MS = 400;
 
 const DIRECTIONS = {
@@ -15,6 +15,7 @@ const THEMES = ['light', 'dark', 'system'];
 const KEYS = {
   meta: 'lingo:meta',
   progress: (dir) => `lingo:progress:${dir}`,
+  excluded: 'lingo:excluded',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -113,9 +114,20 @@ function loadProgress(dir) {
   return isPlainObject(saved) ? saved : {};
 }
 
+// dir -> { id: { target, hint, at } }; the text is kept so Settings can list them without loading the data.
+function loadExcluded() {
+  const saved = store.read(KEYS.excluded, {});
+  const excluded = {};
+  for (const dir of Object.keys(DIRECTIONS)) {
+    excluded[dir] = isPlainObject(saved) && isPlainObject(saved[dir]) ? saved[dir] : {};
+  }
+  return excluded;
+}
+
 const state = {
   meta: loadMeta(),
   progress: { 'ro-sv': loadProgress('ro-sv'), 'sv-ro': loadProgress('sv-ro') },
+  excluded: loadExcluded(),
   data: {},      // dir -> items, in difficulty order
   loading: {},   // dir -> pending fetch promise
   lesson: null,
@@ -123,10 +135,20 @@ const state = {
 
 function saveMeta() { store.write(KEYS.meta, state.meta); }
 function saveProgress(dir) { store.write(KEYS.progress(dir), state.progress[dir]); }
+function saveExcluded() { store.write(KEYS.excluded, state.excluded); }
+
+function isExcluded(dir, id) { return Object.prototype.hasOwnProperty.call(state.excluded[dir], id); }
+
+// The direction's sentences minus the ones the learner excluded, or null while loading.
+function activeItems(dir) {
+  const items = state.data[dir];
+  return items ? items.filter((it) => !isExcluded(dir, it.id)) : null;
+}
 
 // ---------------------------------------------------------------- scheduling
 
-function isDue(rec, now) { return rec.due <= now; }
+function isLearned(rec) { return rec.count >= LEARNED_AT; }
+function isDue(rec, now) { return !isLearned(rec) && rec.due <= now; }
 
 // Correct: one more day of waiting per correct answer in a row. Wrong: due again right away.
 function recordAnswer(dir, id, correct, now = Date.now()) {
@@ -180,9 +202,10 @@ function shuffle(list) {
   return a;
 }
 
-function nextDueDate(progress, now = Date.now()) {
+function nextDueDate(dir, now = Date.now()) {
   let next = Infinity;
-  for (const rec of Object.values(progress)) {
+  for (const [id, rec] of Object.entries(state.progress[dir])) {
+    if (isExcluded(dir, id) || isLearned(rec)) continue;
     if (rec.due > now && rec.due < next) next = rec.due;
   }
   return next === Infinity ? null : next;
@@ -218,12 +241,22 @@ function currentStreak(now = Date.now()) {
   return alive ? state.meta.streak : 0;
 }
 
-// Sentences seen at least once, out of the whole dataset (total shown once it has loaded).
+// In play: seen at least once but not learned yet, out of the whole dataset (total shown once
+// it has loaded). Learned: retired after LEARNED_AT right in a row. Excluded sentences count nowhere.
 function renderInPlay(dir) {
   const progress = state.progress[dir];
-  const items = state.data[dir];
-  const inPlay = items ? items.filter((it) => progress[it.id]).length : Object.keys(progress).length;
+  const items = activeItems(dir);
+  const ids = items ? items.map((it) => it.id) : Object.keys(progress).filter((id) => !isExcluded(dir, id));
+  let inPlay = 0;
+  let learned = 0;
+  for (const id of ids) {
+    const rec = progress[id];
+    if (!rec) continue;
+    if (isLearned(rec)) learned += 1;
+    else inPlay += 1;
+  }
   $('stat-in-play').textContent = inPlay.toLocaleString();
+  $('stat-learned').textContent = learned.toLocaleString();
   $('stat-total').textContent = items ? `/ ${items.length.toLocaleString()}` : '';
 }
 
@@ -283,12 +316,16 @@ function selectTheme(theme) {
 
 // ---------------------------------------------------------------- navigation
 
-const screens = ['start', 'quiz', 'end', 'settings', 'about'];
+const screens = ['start', 'quiz', 'end', 'settings', 'excluded', 'about'];
 
 function show(name) {
   for (const s of screens) $(`screen-${s}`).hidden = s !== name;
   if (name === 'start') renderStart();
-  if (name === 'settings') setStatus('');
+  if (name === 'settings') {
+    setStatus('');
+    renderExcludedButton();
+  }
+  if (name === 'excluded') renderExcluded();
   window.scrollTo(0, 0);
 }
 
@@ -328,14 +365,14 @@ function renderLessonPreview() {
 
   renderInPlay(dir);
   const progress = state.progress[dir];
-  const lesson = buildLesson(state.data[dir], progress);
+  const lesson = buildLesson(activeItems(dir), progress);
   const reviews = lesson.filter((it) => progress[it.id]).length;
   const fresh = lesson.length - reviews;
   startBtn.textContent = 'Start lesson';
   startBtn.disabled = lesson.length === 0;
 
   if (lesson.length === 0) {
-    const next = nextDueDate(progress);
+    const next = nextDueDate(dir);
     const when = next ? new Date(next).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) : null;
     preview.textContent = when
       ? `You’ve done every sentence. The next review is due on ${when}.`
@@ -371,7 +408,7 @@ function startLesson() {
     renderLessonPreview();
     return;
   }
-  const items = buildLesson(state.data[dir], state.progress[dir]);
+  const items = buildLesson(activeItems(dir), state.progress[dir]);
   if (items.length === 0) return;
   state.lesson = { dir, items, index: 0, answered: false, results: [] };
   show('quiz');
@@ -479,7 +516,7 @@ function renderTally(dir, item) {
   }
   const times = (n) => (n === 1 ? '1 time' : `${n} times`);
   let text = `Correct ${rec.correct} of ${times(rec.seen)} · ${rec.count} in a row`;
-  if (rec.count >= LEARNED_AT) text += ' · learned';
+  if (isLearned(rec)) text += ' · learned';
   tally.textContent = text;
 }
 
@@ -546,6 +583,93 @@ function quitLesson() {
   show('start');
 }
 
+// Takes the current sentence out of the pool (e.g. a wrong translation) and moves on.
+async function excludeCurrent() {
+  const lesson = state.lesson;
+  if (!lesson) return;
+  const item = lesson.items[lesson.index];
+  const choice = await confirmChoice({
+    title: 'Exclude this sentence?',
+    body: 'It won’t appear in your lessons or count in your totals. You can restore it from Settings.',
+    actions: [
+      { label: 'Exclude sentence', value: 'exclude', style: 'btn-danger' },
+      { label: 'Cancel', value: 'cancel', style: 'btn-quiet' },
+    ],
+  });
+  if (choice !== 'exclude' || state.lesson !== lesson) return;
+
+  state.excluded[lesson.dir][item.id] = { target: item.target, hint: item.hint, at: Date.now() };
+  saveExcluded();
+  lesson.items.splice(lesson.index, 1);
+  lesson.results.splice(lesson.index, 1);
+
+  if (lesson.index < lesson.items.length) {
+    renderProgress();
+    renderQuestion();
+  } else if (lesson.results.some(Boolean)) {
+    finishLesson();
+  } else {
+    quitLesson();
+  }
+}
+
+// ---------------------------------------------------------------- excluded sentences
+
+function excludedCount() {
+  return Object.values(state.excluded).reduce((n, recs) => n + Object.keys(recs).length, 0);
+}
+
+function renderExcludedButton() {
+  const n = excludedCount();
+  $('excluded-btn').textContent = n ? `Show excluded sentences (${n})` : 'Show excluded sentences';
+}
+
+function renderExcluded() {
+  const entries = [];
+  for (const [dir, recs] of Object.entries(state.excluded)) {
+    for (const [id, rec] of Object.entries(recs)) entries.push({ dir, id, ...rec });
+  }
+  entries.sort((a, b) => (b.at || 0) - (a.at || 0));
+  $('excluded-empty').hidden = entries.length > 0;
+  $('excluded-list').replaceChildren(...entries.map(excludedItem));
+}
+
+function excludedItem({ dir, id, target, hint }) {
+  const { learn, targetLang, hintLang } = DIRECTIONS[dir];
+  const li = document.createElement('li');
+  const text = document.createElement('div');
+  text.className = 'excluded-text';
+  const label = document.createElement('span');
+  label.className = 'excluded-lang';
+  label.textContent = learn;
+  const sentence = document.createElement('p');
+  sentence.className = 'excluded-sentence';
+  sentence.lang = targetLang;
+  sentence.textContent = target || `Sentence ${id}`;
+  const hintEl = document.createElement('p');
+  hintEl.className = 'excluded-hint';
+  hintEl.lang = hintLang;
+  hintEl.textContent = hint || '';
+  text.append(label, sentence, hintEl);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-small';
+  btn.textContent = 'Restore';
+  btn.dataset.dir = dir;
+  btn.dataset.id = id;
+  btn.setAttribute('aria-label', `Restore “${target || id}”`);
+  li.append(text, btn);
+  return li;
+}
+
+function restoreExcluded(dir, id) {
+  if (!state.excluded[dir]) return;
+  delete state.excluded[dir][id];
+  saveExcluded();
+  renderExcluded();
+}
+
 // ---------------------------------------------------------------- confirm dialog
 
 function confirmChoice({ title, body, actions }) {
@@ -582,6 +706,7 @@ async function exportProgress() {
     exportedAt: new Date().toISOString(),
     meta: state.meta,
     progress: state.progress,
+    excluded: state.excluded,
   };
   const name = `lingo-progress-${dayKey(Date.now())}.json`;
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
@@ -638,8 +763,22 @@ function parseBackup(text) {
       progress[dir][id] = { count: rec.count, due: rec.due, seen: rec.seen, correct: rec.correct };
     }
   }
+  // Older backups have no exclusions; damaged entries are skipped rather than failing the import.
+  const excluded = {};
+  for (const dir of Object.keys(DIRECTIONS)) {
+    const recs = isPlainObject(data.excluded) && isPlainObject(data.excluded[dir]) ? data.excluded[dir] : {};
+    excluded[dir] = {};
+    for (const [id, rec] of Object.entries(recs)) {
+      if (!isPlainObject(rec)) continue;
+      excluded[dir][id] = {
+        target: typeof rec.target === 'string' ? rec.target : '',
+        hint: typeof rec.hint === 'string' ? rec.hint : '',
+        at: Number.isFinite(rec.at) ? rec.at : 0,
+      };
+    }
+  }
   const meta = isPlainObject(data.meta) ? data.meta : {};
-  return { progress, meta };
+  return { progress, meta, excluded };
 }
 
 function applyBackup(backup, mode) {
@@ -655,7 +794,12 @@ function applyBackup(backup, mode) {
       }
     }
     saveProgress(dir);
+    // Exclusions are about bad sentences, not progress, so both modes keep the union.
+    for (const [id, rec] of Object.entries(backup.excluded[dir])) {
+      if (!isExcluded(dir, id)) state.excluded[dir][id] = rec;
+    }
   }
+  saveExcluded();
 
   const theirs = backup.meta;
   const validDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -764,6 +908,15 @@ function bindEvents() {
     quitLesson();
   });
 
+  $('exclude-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    excludeCurrent();
+  });
+  $('excluded-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-id]');
+    if (btn) restoreExcluded(btn.dataset.dir, btn.dataset.id);
+  });
+
   $('options').addEventListener('click', (e) => {
     const btn = e.target.closest('.option');
     if (!btn) return;
@@ -782,7 +935,7 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if ($('screen-quiz').hidden || !state.lesson || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ($('screen-quiz').hidden || !state.lesson || $('confirm').open || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!state.lesson.answered && /^[1-5]$/.test(e.key)) {
       answer(Number(e.key) - 1);
     } else if (state.lesson.answered && (e.key === 'Enter' || e.key === ' ')) {

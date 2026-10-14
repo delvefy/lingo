@@ -55,6 +55,7 @@
         <div><dt>Played today</dt><dd id="stat-today">0</dd></div>
         <div><dt>Day streak</dt><dd id="stat-streak">0</dd></div>
         <div><dt>In play</dt><dd><span id="stat-in-play">0</span> <span class="stat-total" id="stat-total"></span></dd></div>
+        <div><dt>Learned</dt><dd id="stat-learned">0</dd></div>
       </dl>
 
       <aside class="notice" id="install-notice" hidden>
@@ -83,6 +84,9 @@
         </button>
         <ol class="progress" id="progress" aria-hidden="true"></ol>
         <span class="progress-count" id="progress-count"></span>
+        <button type="button" class="icon-btn icon-btn-end" id="exclude-btn" aria-label="Exclude this sentence" title="Exclude this sentence">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 18L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
       </header>
 
       <div class="question">
@@ -133,6 +137,12 @@
       </div>
 
       <div class="setting">
+        <h3>Excluded sentences</h3>
+        <p>Sentences you excluded during a lesson, for example because the translation was wrong. They don’t appear in lessons or count in your totals.</p>
+        <button type="button" class="btn" id="excluded-btn" data-go="excluded">Show excluded sentences</button>
+      </div>
+
+      <div class="setting">
         <h3>Back up your progress</h3>
         <p>Progress is stored only on this device. Save a backup file to keep it safe or move it to another device.</p>
         <button type="button" class="btn" id="export-btn">Export progress</button>
@@ -154,6 +164,18 @@
       <p class="status" id="settings-status" role="status"></p>
     </section>
 
+    <!-- Excluded -->
+    <section id="screen-excluded" class="screen" hidden>
+      <header class="page-head">
+        <button type="button" class="icon-btn" data-go="settings" aria-label="Back">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Excluded sentences</h2>
+      </header>
+      <p class="excluded-empty" id="excluded-empty">You haven’t excluded any sentences.</p>
+      <ul class="excluded-list" id="excluded-list"></ul>
+    </section>
+
     <!-- About -->
     <section id="screen-about" class="screen" hidden>
       <header class="page-head">
@@ -164,7 +186,8 @@
       </header>
       <div class="prose">
         <p>Each lesson has 10 sentences with one word missing. Pick the word that fits. The translation underneath helps when the sentence alone isn’t enough.</p>
-        <p>A lesson mixes up to 8 reviews with at least 2 new sentences. Each time you get a sentence right, it waits one more day before coming back: 1 day, then 2, then 3. If you get it wrong, it returns in your next lesson.</p>
+        <p>A lesson mixes up to 8 reviews with at least 2 new sentences. Each time you get a sentence right, it waits one more day before coming back: 1 day, then 2, then 3. If you get it wrong, it returns in your next lesson. After 10 right in a row, a sentence is learned and stops coming back.</p>
+        <p>If a translation looks wrong, tap the exclude button at the top of the question to take that sentence out of your lessons. You can restore it from Settings.</p>
         <h3>Sentences</h3>
         <p>All sentences and translations come from <a href="https://tatoeba.org" target="_blank" rel="noopener">Tatoeba</a>, a collection of sentences written and translated by volunteers. They are licensed under <a href="https://creativecommons.org/licenses/by/2.0/fr/" target="_blank" rel="noopener">CC BY 2.0 FR</a>.</p>
         <p>Few sentences are translated directly between Swedish and Romanian. Some pairs are linked through a shared English translation, so a hint can be a looser match than a direct translation. Most hints are machine translations made for this app.</p>
