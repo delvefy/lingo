@@ -1,0 +1,5 @@
+.idea/
+data-pipeline/raw/
+__pycache__/
+.DS_Store
+data-pipeline/samples.txt

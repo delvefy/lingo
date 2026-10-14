@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>lingo</title>
+  <meta name="description" content="Practise Swedish and Romanian with fill-in-the-blank sentences.">
+  <meta name="theme-color" content="#EEF2F8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E1729" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="lingo">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+
+    <!-- Start -->
+    <section id="screen-start" class="screen">
+      <header class="brand">
+        <h1 class="wordmark">lingo</h1>
+        <p class="tagline">Swedish and Romanian, one missing word at a time.</p>
+      </header>
+
+      <div class="direction" role="radiogroup" aria-label="Language to learn">
+        <button type="button" role="radio" class="direction-option" data-dir="ro-sv">
+          <span class="direction-name">Swedish</span>
+          <span class="direction-sub">hints in Romanian</span>
+        </button>
+        <button type="button" role="radio" class="direction-option" data-dir="sv-ro">
+          <span class="direction-name">Romanian</span>
+          <span class="direction-sub">hints in Swedish</span>
+        </button>
+      </div>
+
+      <div class="lesson-card">
+        <p class="lesson-preview" id="lesson-preview" aria-live="polite">Loading sentences…</p>
+        <button type="button" class="btn btn-primary" id="start-btn" disabled>Start lesson</button>
+      </div>
+
+      <dl class="stats">
+        <div><dt>Reviewed today</dt><dd id="stat-today">0</dd></div>
+        <div><dt>Day streak</dt><dd id="stat-streak">0</dd></div>
+        <div><dt>Learned</dt><dd id="stat-learned">0</dd></div>
+      </dl>
+
+      <aside class="notice" id="install-notice" hidden>
+        <p id="install-text"></p>
+        <div class="notice-actions">
+          <button type="button" class="btn btn-small btn-primary" id="install-btn" hidden>Install app</button>
+          <button type="button" class="btn btn-small btn-quiet" id="install-dismiss">Not now</button>
+        </div>
+      </aside>
+
+      <aside class="notice notice-warn" id="storage-notice" hidden>
+        <p>This browser is blocking storage, so your progress won’t be saved. Private browsing is the usual cause.</p>
+      </aside>
+
+      <nav class="footer-links">
+        <button type="button" class="link" data-go="settings">Settings</button>
+        <button type="button" class="link" data-go="about">About</button>
+      </nav>
+    </section>
+
+    <!-- Quiz -->
+    <section id="screen-quiz" class="screen" hidden>
+      <header class="quiz-bar">
+        <button type="button" class="icon-btn" id="quit-btn" aria-label="End lesson">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+        <ol class="progress" id="progress" aria-hidden="true"></ol>
+        <span class="progress-count" id="progress-count"></span>
+      </header>
+
+      <div class="question">
+        <p class="sentence" id="sentence"></p>
+        <p class="hint" id="hint"></p>
+        <p class="source" id="source" hidden></p>
+      </div>
+
+      <div class="options" id="options" role="group" aria-label="Choose the missing word"></div>
+
+      <div class="next-area">
+        <button type="button" class="btn btn-primary" id="next-btn" hidden>Next</button>
+        <p class="next-tip" id="next-tip" hidden>or tap anywhere</p>
+      </div>
+    </section>
+
+    <!-- End -->
+    <section id="screen-end" class="screen" hidden>
+      <header class="end-head">
+        <p class="score" id="score"></p>
+        <p class="score-note" id="score-note"></p>
+      </header>
+      <ol class="recap" id="recap"></ol>
+      <div class="end-actions">
+        <button type="button" class="btn btn-primary" id="again-btn">Next lesson</button>
+        <button type="button" class="btn btn-quiet" data-go="start">Back to start</button>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="screen-settings" class="screen" hidden>
+      <header class="page-head">
+        <button type="button" class="icon-btn" data-go="start" aria-label="Back">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Settings</h2>
+      </header>
+
+      <div class="setting">
+        <h3>Back up your progress</h3>
+        <p>Progress is stored only on this device. Save a backup file to keep it safe or move it to another device.</p>
+        <button type="button" class="btn" id="export-btn">Export progress</button>
+      </div>
+
+      <div class="setting">
+        <h3>Restore from a backup</h3>
+        <p>Pick a file you exported earlier. You can merge it with your current progress or replace it.</p>
+        <button type="button" class="btn" id="import-btn">Import progress</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden>
+      </div>
+
+      <div class="setting">
+        <h3>Start over</h3>
+        <p>Erase your reviews, streak and stats for both languages on this device.</p>
+        <button type="button" class="btn btn-danger" id="reset-btn">Reset progress</button>
+      </div>
+
+      <p class="status" id="settings-status" role="status"></p>
+    </section>
+
+    <!-- About -->
+    <section id="screen-about" class="screen" hidden>
+      <header class="page-head">
+        <button type="button" class="icon-btn" data-go="start" aria-label="Back">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>About</h2>
+      </header>
+      <div class="prose">
+        <p>Each lesson has 10 sentences with one word missing. Pick the word that fits. The translation underneath helps when the sentence alone isn’t enough.</p>
+        <p>A lesson mixes up to 8 reviews with at least 2 new sentences. Each time you get a sentence right, it waits one more day before coming back: 1 day, then 2, then 3. If you get it wrong, it returns in your next lesson.</p>
+        <h3>Sentences</h3>
+        <p>All sentences and translations come from <a href="https://tatoeba.org" target="_blank" rel="noopener">Tatoeba</a>, a collection of sentences written and translated by volunteers. They are licensed under <a href="https://creativecommons.org/licenses/by/2.0/fr/" target="_blank" rel="noopener">CC BY 2.0 FR</a>.</p>
+        <p>Few sentences are translated directly between Swedish and Romanian. Most pairs are linked through a shared English translation, so a hint can be a looser match than a direct translation.</p>
+        <h3>Your data</h3>
+        <p>Nothing leaves your device. Use Settings to export a backup.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-body"></p>
+      <div class="dialog-actions" id="confirm-actions"></div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
