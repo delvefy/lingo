@@ -1,7 +1,7 @@
 'use strict';
 
 // Bump this whenever any cached file changes, so clients drop the old cache.
-const CACHE = 'lingo-v4';
+const CACHE = 'lingo-v5';
 
 const PRECACHE = [
   './',
@@ -20,7 +20,8 @@ const PRECACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
+      // Bypass the HTTP cache, or a fresh worker can precache the previous deploy's files.
+      .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });

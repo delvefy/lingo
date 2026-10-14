@@ -827,6 +827,15 @@ function bindEvents() {
 function registerServiceWorker() {
   if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* app still works online */ });
+    // A new deploy's worker takes over mid-session: reload once so its files are used right away.
+    if (navigator.serviceWorker.controller) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded || state.lesson) return;
+        reloaded = true;
+        location.reload();
+      });
+    }
   }
   // Ask the browser not to evict our data under storage pressure.
   if (store.available && navigator.storage && navigator.storage.persist) {
