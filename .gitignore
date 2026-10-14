@@ -3,3 +3,5 @@ data-pipeline/raw/
 __pycache__/
 .DS_Store
 data-pipeline/samples.txt
+data-pipeline/mt/*.todo.tsv
+data-pipeline/mt/work/

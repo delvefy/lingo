@@ -1,7 +1,7 @@
 'use strict';
 
 // Bump this whenever any cached file changes, so clients drop the old cache.
-const CACHE = 'lingo-v1';
+const CACHE = 'lingo-v2';
 
 const PRECACHE = [
   './',

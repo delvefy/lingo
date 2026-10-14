@@ -10,6 +10,8 @@ const DIRECTIONS = {
   'sv-ro': { learn: 'Romanian', targetLang: 'ro', hintLang: 'sv' },
 };
 
+const THEMES = ['light', 'dark', 'system'];
+
 const KEYS = {
   meta: 'lingo:meta',
   progress: (dir) => `lingo:progress:${dir}`,
@@ -89,6 +91,7 @@ function defaultMeta() {
     lastLessonDay: null,
     today: { day: null, reviewed: 0 },
     installDismissed: false,
+    theme: 'light',
   };
 }
 
@@ -100,6 +103,7 @@ function loadMeta() {
   const saved = store.read(KEYS.meta, {});
   const meta = Object.assign(defaultMeta(), isPlainObject(saved) ? saved : {});
   if (!DIRECTIONS[meta.direction]) meta.direction = 'ro-sv';
+  if (!THEMES.includes(meta.theme)) meta.theme = 'light';
   if (!isPlainObject(meta.today)) meta.today = { day: null, reviewed: 0 };
   return meta;
 }
@@ -249,6 +253,29 @@ function splitAtBlank(item) {
   };
 }
 
+// ---------------------------------------------------------------- theme
+
+const THEME_COLORS = { light: '#EEF2F8', dark: '#0E1729' };
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+// Resolves "system" to light or dark; the CSS only knows data-theme="dark".
+function applyTheme() {
+  const pref = state.meta.theme;
+  const resolved = pref === 'dark' || (pref === 'system' && darkQuery.matches) ? 'dark' : 'light';
+  document.documentElement.dataset.theme = resolved;
+  document.querySelector('meta[name="theme-color"]').content = THEME_COLORS[resolved];
+  for (const btn of $('theme-picker').children) {
+    btn.setAttribute('aria-checked', String(btn.dataset.theme === pref));
+  }
+}
+
+function selectTheme(theme) {
+  if (!THEMES.includes(theme)) return;
+  state.meta.theme = theme;
+  saveMeta();
+  applyTheme();
+}
+
 // ---------------------------------------------------------------- navigation
 
 const screens = ['start', 'quiz', 'end', 'settings', 'about'];
@@ -374,6 +401,7 @@ function renderQuestion() {
 
   $('hint').lang = hintLang;
   $('hint').textContent = item.hint;
+  renderTally(dir, item);
   $('source').hidden = true;
 
   $('options').replaceChildren(...item.options.map((text, i) => {
@@ -415,6 +443,7 @@ function answer(choiceIndex) {
   blank.classList.add('is-filled');
   blank.removeAttribute('aria-label');
 
+  renderTally(lesson.dir, item);
   renderSource(item);
   renderProgress();
   $('progress-count').textContent = `${lesson.index + 1}/${lesson.items.length}`;
@@ -432,6 +461,20 @@ function markOption(btn, cls, symbol, label) {
   mark.textContent = symbol;
   mark.setAttribute('aria-label', label);
   btn.append(mark);
+}
+
+// How often this sentence has been answered right, so progress toward "learned" is visible.
+function renderTally(dir, item) {
+  const rec = state.progress[dir][item.id];
+  const tally = $('tally');
+  if (!rec || rec.seen === 0) {
+    tally.textContent = 'New sentence';
+    return;
+  }
+  const times = (n) => (n === 1 ? '1 time' : `${n} times`);
+  let text = `Correct ${rec.correct} of ${times(rec.seen)} · ${rec.count} in a row`;
+  if (rec.count >= LEARNED_AT) text += ' · learned';
+  tally.textContent = text;
 }
 
 function renderSource(item) {
@@ -655,8 +698,8 @@ async function resetProgress() {
     ],
   });
   if (choice !== 'reset') return;
-  const { direction, installDismissed } = state.meta;
-  state.meta = Object.assign(defaultMeta(), { direction, installDismissed });
+  const { direction, installDismissed, theme } = state.meta;
+  state.meta = Object.assign(defaultMeta(), { direction, installDismissed, theme });
   for (const dir of Object.keys(DIRECTIONS)) {
     state.progress[dir] = {};
     saveProgress(dir);
@@ -742,6 +785,11 @@ function bindEvents() {
     }
   });
 
+  for (const btn of $('theme-picker').children) {
+    btn.addEventListener('click', () => selectTheme(btn.dataset.theme));
+  }
+  darkQuery.addEventListener('change', applyTheme);
+
   $('export-btn').addEventListener('click', exportProgress);
   $('import-btn').addEventListener('click', () => $('import-file').click());
   $('import-file').addEventListener('change', (e) => {
@@ -781,5 +829,6 @@ function registerServiceWorker() {
 }
 
 bindEvents();
+applyTheme();
 show('start');
 registerServiceWorker();

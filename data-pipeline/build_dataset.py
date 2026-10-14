@@ -406,60 +406,103 @@ def assign_levels(items) -> None:
         it["level"] = level
 
 
-def build_items(pairs, target_sents, hint_sents, target_key, stats: LangStats, seed: str):
-    """One item per unique target sentence; prefer direct pairs, then a similar-length hint."""
+@dataclass
+class Hint:
+    target_id: int
+    text: str
+    kind: str  # "direct", "pivot" or "mt"; lower in HINT_ORDER wins
+
+
+HINT_ORDER = {"direct": 0, "pivot": 1, "mt": 2}
+
+
+def make_cloze(t_id: int, target: str, stats: LangStats, seed: str, counts: Counter):
+    """Blank and options for a target sentence, or None (reason counted) if it can't be used."""
+    if not sentence_ok(target, stats):
+        counts["rejected_sentence"] += 1
+        return None
+    picked = choose_blank(target, stats)
+    if picked is None:
+        counts["no_blank"] += 1
+        return None
+    blank, answer, rank = picked
+    rng = random.Random(f"{seed}:{t_id}")
+    distractors = pick_distractors(target, blank, answer, stats, rng)
+    if distractors is None:
+        counts["no_distractors"] += 1
+        return None
+    options = [answer] + distractors
+    rng.shuffle(options)
+    return {
+        "id": str(t_id),
+        "target": target,
+        "blank": blank,
+        "answer": answer,
+        "options": options,
+        "_rank": rank,
+        "_difficulty": difficulty(target, blank, rank, stats),
+    }
+
+
+def build_items(pairs, target_sents, hint_sents, target_key, mt_hints, stats: LangStats, seed: str):
+    """One item per unique target sentence; prefer direct pairs, then pivot, then machine hints."""
+    h_key = "swe_id" if target_key == "ron_id" else "ron_id"
     groups = defaultdict(list)
     for p in pairs:
         t_id = getattr(p, target_key)
-        groups[dedupe_key(target_sents[t_id])].append(p)
+        groups[dedupe_key(target_sents[t_id])].append(
+            Hint(t_id, hint_sents[getattr(p, h_key)], "pivot" if p.pivot else "direct"))
+    for t_id, text in mt_hints.items():
+        if t_id in target_sents:
+            groups[dedupe_key(target_sents[t_id])].append(Hint(t_id, text, "mt"))
 
     counts = Counter()
     items = []
     for group in groups.values():
-        t_id = getattr(group[0], target_key)
-        target = target_sents[t_id]
-        if not sentence_ok(target, stats):
-            counts["rejected_sentence"] += 1
-            continue
-        h_key = "swe_id" if target_key == "ron_id" else "ron_id"
+        target = target_sents[group[0].target_id]
         t_len = len(target)
-        best = min(
-            group,
-            key=lambda p: (p.pivot, abs(len(hint_sents[getattr(p, h_key)]) - t_len), getattr(p, h_key)),
-        )
-        hint = hint_sents[getattr(best, h_key)]
-        if len(hint.split()) > MAX_WORDS * 2:
+        best = min(group, key=lambda h: (HINT_ORDER[h.kind], abs(len(h.text) - t_len), h.target_id))
+        if len(best.text.split()) > MAX_WORDS * 2:
             counts["rejected_hint"] += 1
             continue
-
-        picked = choose_blank(target, stats)
-        if picked is None:
-            counts["no_blank"] += 1
+        item = make_cloze(best.target_id, target_sents[best.target_id], stats, seed, counts)
+        if item is None:
             continue
-        blank, answer, rank = picked
-        rng = random.Random(f"{seed}:{t_id}")
-        distractors = pick_distractors(target, blank, answer, stats, rng)
-        if distractors is None:
-            counts["no_distractors"] += 1
-            continue
-        options = [answer] + distractors
-        rng.shuffle(options)
-        items.append({
-            "id": str(t_id),
-            "target": target,
-            "blank": blank,
-            "answer": answer,
-            "options": options,
-            "hint": hint,
-            "pivot": best.pivot,
-            "level": 0,
-            "_rank": rank,
-            "_difficulty": difficulty(target, blank, rank, stats),
-        })
-        counts["pivot" if best.pivot else "direct"] += 1
+        item.update(hint=best.text, pivot=best.kind == "pivot", mt=best.kind == "mt", level=0)
+        items.append(item)
+        counts[best.kind] += 1
 
     assign_levels(items)
     return items, counts
+
+
+def mt_candidates(target_sents, covered_keys, stats: LangStats, seed: str):
+    """Usable target sentences with no hint yet, as (id, text) rows, easiest first."""
+    by_key = {}
+    for t_id in sorted(target_sents):
+        key = dedupe_key(target_sents[t_id])
+        if key not in covered_keys and key not in by_key:
+            by_key[key] = t_id
+    rows, counts = [], Counter()
+    for t_id in by_key.values():
+        item = make_cloze(t_id, target_sents[t_id], stats, seed, counts)
+        if item is not None:
+            rows.append((item["_difficulty"], t_id, target_sents[t_id]))
+    rows.sort()
+    return [(t_id, text) for _, t_id, text in rows]
+
+
+def load_mt(path: Path, lang: str) -> dict[int, str]:
+    """Machine-translated hints: id <TAB> hint, where id is the target sentence."""
+    if not path.exists():
+        return {}
+    hints = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            row = line.rstrip("\n").split("\t")
+            if len(row) >= 2 and row[0].isdigit() and row[1].strip():
+                hints[int(row[0])] = normalize_text(row[1], lang)
+    return hints
 
 
 # ---------------------------------------------------------------- output
@@ -476,7 +519,7 @@ def format_item(it) -> str:
     _, start, end = words[it["blank"]]
     gapped = it["target"][:start] + "_____" + it["target"][end:]
     opts = "  ".join(f"[{o}]" if o == it["answer"] else o for o in it["options"])
-    tag = "pivot" if it["pivot"] else "direct"
+    tag = "mt" if it["mt"] else "pivot" if it["pivot"] else "direct"
     return (
         f"#{it['id']}  L{it['level']} difficulty {it['_difficulty']:.2f} answer rank {it['_rank']}  {tag}\n"
         f"   {gapped}\n"
@@ -493,6 +536,10 @@ def main() -> int:
     parser.add_argument("--refresh", action="store_true", help="re-download source files")
     parser.add_argument("--samples", type=int, default=30)
     parser.add_argument("--seed", default="lingo")
+    parser.add_argument("--mt-dir", type=Path, default=here / "mt",
+                        help="machine-translated hints, one <direction>.tsv per direction")
+    parser.add_argument("--mt-todo", action="store_true",
+                        help="write <direction>.todo.tsv with sentences that still need a hint")
     args = parser.parse_args()
 
     download(args.raw_dir, args.refresh)
@@ -517,21 +564,32 @@ def main() -> int:
     )
 
     directions = [
-        ("ro-sv", "swe_id", swe, ron, swe_stats),  # learn Swedish
-        ("sv-ro", "ron_id", ron, swe, ron_stats),  # learn Romanian
+        ("ro-sv", "swe_id", swe, ron, swe_stats, "ron"),  # learn Swedish
+        ("sv-ro", "ron_id", ron, swe, ron_stats, "swe"),  # learn Romanian
     ]
-    for name, target_key, targets, hints, stats in directions:
-        items, c = build_items(pairs, targets, hints, target_key, stats, args.seed)
+    for name, target_key, targets, hints, stats, hint_lang in directions:
+        mt_hints = load_mt(args.mt_dir / f"{name}.tsv", hint_lang)
+        items, c = build_items(pairs, targets, hints, target_key, mt_hints, stats, args.seed)
         write_json(items, args.out_dir / f"{name}.json")
         size = (args.out_dir / f"{name}.json").stat().st_size
         levels = Counter(it["level"] for it in items)
         print(f"\n=== {name}: {len(items)} items ({size / 1024:.0f} KB)")
-        print(f"   direct {c['direct']}, pivot {c['pivot']}")
+        print(f"   direct {c['direct']}, pivot {c['pivot']}, machine {c['mt']}")
         print(
             f"   rejected: sentence filter {c['rejected_sentence']}, hint {c['rejected_hint']}, "
             f"no blank {c['no_blank']}, no distractors {c['no_distractors']}"
         )
         print("   levels: " + ", ".join(f"L{k}={levels[k]}" for k in sorted(levels)))
+
+        covered = {dedupe_key(targets[getattr(p, target_key)]) for p in pairs}
+        covered |= {dedupe_key(targets[t]) for t in mt_hints if t in targets}
+        todo = mt_candidates(targets, covered, stats, args.seed)
+        print(f"   still without a hint: {len(todo)} usable sentences")
+        if args.mt_todo:
+            path = args.mt_dir / f"{name}.todo.tsv"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("".join(f"{t}\t{text}\n" for t, text in todo), encoding="utf-8")
+            print(f"   wrote {path}")
 
         rng = random.Random(args.seed)
         print(f"\n--- {args.samples} random {name} items ---")

@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>lingo</title>
   <meta name="description" content="Practise Swedish and Romanian with fill-in-the-blank sentences.">
-  <meta name="theme-color" content="#EEF2F8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0E1729" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#EEF2F8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,6 +14,16 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Set the theme before first paint so a dark page never flashes light (or the reverse).
+    // app.js keeps it up to date after that; light is the default.
+    (function () {
+      var pref = 'light';
+      try { pref = JSON.parse(localStorage.getItem('lingo:meta')).theme || pref; } catch (e) {}
+      var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
 </head>
 <body>
   <main id="app">
@@ -79,6 +88,7 @@
       <div class="question">
         <p class="sentence" id="sentence"></p>
         <p class="hint" id="hint"></p>
+        <p class="tally" id="tally"></p>
         <p class="source" id="source" hidden></p>
       </div>
 
@@ -111,6 +121,16 @@
         </button>
         <h2>Settings</h2>
       </header>
+
+      <div class="setting">
+        <h3>Theme</h3>
+        <p>System follows your device’s light or dark setting.</p>
+        <div class="theme-picker" id="theme-picker" role="radiogroup" aria-label="Theme">
+          <button type="button" role="radio" class="btn" data-theme="light">Light</button>
+          <button type="button" role="radio" class="btn" data-theme="dark">Dark</button>
+          <button type="button" role="radio" class="btn" data-theme="system">System</button>
+        </div>
+      </div>
 
       <div class="setting">
         <h3>Back up your progress</h3>
@@ -147,7 +167,7 @@
         <p>A lesson mixes up to 8 reviews with at least 2 new sentences. Each time you get a sentence right, it waits one more day before coming back: 1 day, then 2, then 3. If you get it wrong, it returns in your next lesson.</p>
         <h3>Sentences</h3>
         <p>All sentences and translations come from <a href="https://tatoeba.org" target="_blank" rel="noopener">Tatoeba</a>, a collection of sentences written and translated by volunteers. They are licensed under <a href="https://creativecommons.org/licenses/by/2.0/fr/" target="_blank" rel="noopener">CC BY 2.0 FR</a>.</p>
-        <p>Few sentences are translated directly between Swedish and Romanian. Most pairs are linked through a shared English translation, so a hint can be a looser match than a direct translation.</p>
+        <p>Few sentences are translated directly between Swedish and Romanian. Some pairs are linked through a shared English translation, so a hint can be a looser match than a direct translation. Most hints are machine translations made for this app.</p>
         <h3>Your data</h3>
         <p>Nothing leaves your device. Use Settings to export a backup.</p>
       </div>

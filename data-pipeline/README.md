@@ -11,7 +11,18 @@ python3 data-pipeline/build_dataset.py
 
 Requires Python 3.9+ and only the standard library. On the first run it downloads the
 per-language exports into `data-pipeline/raw/`, which is gitignored. Pass `--refresh` to
-download them again. Other flags: `--samples N`, `--seed S`, `--raw-dir`, `--out-dir`.
+download them again. Other flags: `--samples N`, `--seed S`, `--raw-dir`, `--out-dir`, `--mt-dir`, `--mt-todo`.
+
+## Machine-translated hints
+
+Tatoeba links only a few thousand Romanian and Swedish sentences to each other, so most sentences
+have no hint in the other language. `mt/ro-sv.tsv` and `mt/sv-ro.tsv` fill the gap with machine
+translations, one `id<TAB>hint` line per target sentence (the id is the Tatoeba id of the sentence being learned).
+They were translated by Claude and are committed, so the build stays offline and reproducible.
+A human translation always wins over a machine one for the same sentence.
+
+`--mt-todo` writes `mt/<direction>.todo.tsv` (gitignored) with the usable sentences that still have
+no hint, easiest first, ready to be translated and appended to the matching `.tsv`.
 
 ## Sources
 
@@ -25,7 +36,7 @@ These are much smaller than the full `sentences.tar.bz2` and `links.tar.bz2` exp
 ```json
 {"id":"1234","target":"Jag tycker om arabiska.","blank":3,"answer":"arabiska",
  "options":["ryska","arabiska","finska","kinesiska","människa"],
- "hint":"Îmi place limba arabă.","pivot":true,"level":2}
+ "hint":"Îmi place limba arabă.","pivot":true,"mt":false,"level":2}
 ```
 
 - `id`: the Tatoeba id of the target sentence. It stays stable across rebuilds, so saved progress still matches.
@@ -37,3 +48,4 @@ These are much smaller than the full `sentences.tar.bz2` and `links.tar.bz2` exp
   30 / 25 / 20 / 15 / 10 % of the items.
   The file is in this order, so the app can introduce new items in file order.
 - `pivot`: true when the pair was linked through an English sentence rather than directly.
+- `mt`: true when the hint is a machine translation from `mt/`.
