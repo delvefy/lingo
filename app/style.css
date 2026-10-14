@@ -203,6 +203,7 @@ a { color: var(--blue); }
 .stats > div + div { padding-left: 14px; border-left: 1px solid var(--line); }
 .stats dt { color: var(--muted); font-size: 0.8125rem; }
 .stats dd { margin: 2px 0 0; font: 600 1.75rem/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+.stats .stat-total { color: var(--muted); font-size: 0.875rem; font-weight: 400; white-space: nowrap; }
 
 .notice {
   margin-top: 24px;

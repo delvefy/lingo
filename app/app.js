@@ -218,8 +218,13 @@ function currentStreak(now = Date.now()) {
   return alive ? state.meta.streak : 0;
 }
 
-function learnedCount(dir) {
-  return Object.values(state.progress[dir]).filter((rec) => rec.count >= LEARNED_AT).length;
+// Sentences seen at least once, out of the whole dataset (total shown once it has loaded).
+function renderInPlay(dir) {
+  const progress = state.progress[dir];
+  const items = state.data[dir];
+  const inPlay = items ? items.filter((it) => progress[it.id]).length : Object.keys(progress).length;
+  $('stat-in-play').textContent = inPlay.toLocaleString();
+  $('stat-total').textContent = items ? `/ ${items.length.toLocaleString()}` : '';
 }
 
 // ---------------------------------------------------------------- data
@@ -296,7 +301,7 @@ function renderStart() {
   }
   $('stat-today').textContent = reviewedToday();
   $('stat-streak').textContent = currentStreak();
-  $('stat-learned').textContent = learnedCount(dir);
+  renderInPlay(dir);
   $('storage-notice').hidden = store.available;
   renderInstallNotice();
   renderLessonPreview();
@@ -321,6 +326,7 @@ function renderLessonPreview() {
     return;
   }
 
+  renderInPlay(dir);
   const progress = state.progress[dir];
   const lesson = buildLesson(state.data[dir], progress);
   const reviews = lesson.filter((it) => progress[it.id]).length;
