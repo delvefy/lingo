@@ -202,10 +202,12 @@ function shuffle(list) {
   return a;
 }
 
+// Only sentences still in the dataset count; a rebuild can drop ids that have saved progress.
 function nextDueDate(dir, now = Date.now()) {
+  const ids = new Set((activeItems(dir) || []).map((it) => it.id));
   let next = Infinity;
   for (const [id, rec] of Object.entries(state.progress[dir])) {
-    if (isExcluded(dir, id) || isLearned(rec)) continue;
+    if (!ids.has(id) || isLearned(rec)) continue;
     if (rec.due > now && rec.due < next) next = rec.due;
   }
   return next === Infinity ? null : next;

@@ -42,6 +42,9 @@ LENGTH_TOLERANCE = 3
 # Difficulty = weighted mix of answer rarity, rarest context word and sentence length.
 DIFFICULTY_WEIGHTS = {"answer": 0.6, "context": 0.25, "length": 0.15}
 CONTEXT_RANK_CAP = 20000
+# A Romanian word typed without its diacritics ("sa" for "să"): an accented spelling is this many
+# times more common, and the bare form is rare enough not to be a real word in its own right.
+MISSPELT_RATIO, MISSPELT_MAX_FREQ = 10, 50
 # Cumulative share of items (easiest first) that ends each level 1..5.
 LEVEL_SHARES = (0.30, 0.55, 0.75, 0.90, 1.0)
 
@@ -171,6 +174,7 @@ class LangStats:
     bigrams: set[tuple[str, str]]
     by_rank: list[str]            # eligible vocabulary, index i = rank i+1 (None if ineligible)
     suffix_index: dict[str, list[str]]
+    misspelt: set[str]            # lowercase words that are usually written with diacritics
 
     def eligible(self, word: str) -> bool:
         return (
@@ -204,7 +208,19 @@ def build_lang_stats(lang: str, sentences: dict[int, str]) -> LangStats:
     ordered = [w for w, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))]
     rank = {w: i + 1 for i, w in enumerate(ordered)}
 
-    stats = LangStats(lang, rank, names, bigrams, [], defaultdict(list))
+    misspelt = set()
+    if lang == "ron":
+        accented = Counter()
+        for w, n in freq.items():
+            bare = strip_diacritics(w)
+            if bare != w:
+                accented[bare] = max(accented[bare], n)
+        misspelt = {
+            w for w, n in freq.items()
+            if n < MISSPELT_MAX_FREQ and accented[w] >= MISSPELT_RATIO * n
+        }
+
+    stats = LangStats(lang, rank, names, bigrams, [], defaultdict(list), misspelt)
     for word in ordered[:MAX_DISTRACTOR_RANK]:
         ok = stats.eligible(word)
         stats.by_rank.append(word if ok else None)
@@ -272,6 +288,11 @@ def sentence_ok(text: str, stats: LangStats) -> bool:
     tokens = tokenize(text)
     names = sum(w.lower() in stats.names for w, _, _ in tokens)
     return names / len(tokens) <= 0.34
+
+
+def missing_diacritics(text: str, stats: LangStats) -> bool:
+    """A sentence typed without any diacritics, e.g. 'Hai sa incercam.'"""
+    return strip_diacritics(text) == text and any(w.lower() in stats.misspelt for w, _, _ in tokenize(text))
 
 
 # ---------------------------------------------------------------- cloze
@@ -421,6 +442,9 @@ def make_cloze(t_id: int, target: str, stats: LangStats, seed: str, counts: Coun
     if not sentence_ok(target, stats):
         counts["rejected_sentence"] += 1
         return None
+    if missing_diacritics(target, stats):
+        counts["no_diacritics"] += 1
+        return None
     picked = choose_blank(target, stats)
     if picked is None:
         counts["no_blank"] += 1
@@ -457,7 +481,7 @@ def build_items(pairs, target_sents, hint_sents, target_key, mt_hints, stats: La
             groups[dedupe_key(target_sents[t_id])].append(Hint(t_id, text, "mt"))
 
     counts = Counter()
-    items = []
+    by_hint = {}
     for group in groups.values():
         target = target_sents[group[0].target_id]
         t_len = len(target)
@@ -469,9 +493,17 @@ def build_items(pairs, target_sents, hint_sents, target_key, mt_hints, stats: La
         if item is None:
             continue
         item.update(hint=best.text, pivot=best.kind == "pivot", mt=best.kind == "mt", level=0)
-        items.append(item)
-        counts[best.kind] += 1
+        # One item per hint, too: the same prompt with a different answer reads as a duplicate.
+        item["_pick"] = (HINT_ORDER[best.kind], abs(len(best.text) - t_len), best.target_id)
+        key = dedupe_key(best.text)
+        if key in by_hint:
+            counts["duplicate_hint"] += 1
+            if item["_pick"] >= by_hint[key]["_pick"]:
+                continue
+        by_hint[key] = item
 
+    items = list(by_hint.values())
+    counts.update(("pivot" if it["pivot"] else "mt" if it["mt"] else "direct") for it in items)
     assign_levels(items)
     return items, counts
 
@@ -577,7 +609,8 @@ def main() -> int:
         print(f"   direct {c['direct']}, pivot {c['pivot']}, machine {c['mt']}")
         print(
             f"   rejected: sentence filter {c['rejected_sentence']}, hint {c['rejected_hint']}, "
-            f"no blank {c['no_blank']}, no distractors {c['no_distractors']}"
+            f"no diacritics {c['no_diacritics']}, no blank {c['no_blank']}, "
+            f"no distractors {c['no_distractors']}, duplicate hint {c['duplicate_hint']}"
         )
         print("   levels: " + ", ".join(f"L{k}={levels[k]}" for k in sorted(levels)))
 
