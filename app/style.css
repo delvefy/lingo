@@ -44,6 +44,9 @@
 
 html { -webkit-text-size-adjust: 100%; }
 
+/* The document itself never scrolls or bounces; #app is pinned to the visible viewport. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+
 body {
   margin: 0;
   background: var(--ground);
@@ -55,10 +58,12 @@ body {
 [hidden] { display: none !important; }
 
 #app {
+  position: fixed;
+  inset: 0;
   max-width: 560px;
   margin: 0 auto;
-  min-height: 100vh;
-  min-height: 100dvh;
+  overflow: hidden auto; /* only kicks in if a screen can't fit, e.g. settings on a tiny phone */
+  overscroll-behavior: none;
   display: flex;
   flex-direction: column;
   padding:
