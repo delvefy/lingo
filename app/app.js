@@ -2,7 +2,7 @@
 
 const LESSON_SIZE = 10;
 const NEW_PER_LESSON = 2;
-const LEARNED_AT = 10; // correct answers in a row before a sentence is learned and stops coming back
+const LEARNED_AT = 5; // correct answers in a row before a sentence is learned and stops coming back
 const SAVE_DELAY_MS = 400;
 
 const DIRECTIONS = {
